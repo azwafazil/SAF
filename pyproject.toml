@@ -28,6 +28,10 @@ dependencies = [
   "pandas",
   "pydantic",
   "pyreadstat",
+  "numpy",
+  "scipy>=1.10",
+  "statsmodels>=0.14",
+  "pingouin>=0.5",
 ]
 
 [project.scripts]
