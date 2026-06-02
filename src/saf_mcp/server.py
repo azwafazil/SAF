@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -43,7 +42,10 @@ from .stats import (
     stat_regress,
 )
 
-mcp = FastMCP("SAF")
+SAF_HOST = os.environ.get("SAF_HOST", "127.0.0.1")
+SAF_PORT = int(os.environ.get("SAF_PORT", "8000"))
+
+mcp = FastMCP("SAF", host=SAF_HOST, port=SAF_PORT)
 
 
 def _error(error: Exception) -> dict[str, Any]:
