@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "saf": {
+      "command": "saf-mcp",
+      "env": {
+        "SAF_DATA_ROOT": "/absolute/path/to/your/saf-data"
+      }
+    }
+  }
+}
