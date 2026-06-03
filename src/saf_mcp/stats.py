@@ -306,22 +306,23 @@ def stat_compare_groups(
                 "df": float(df_t),
             }
         )
-        # Cohen's d
-        if len(g1) > 1 and len(g2) > 1:
-            pooled_sd = (
-                math.sqrt(
-                    (
-                        (len(g1) - 1) * float(np.var(g1, ddof=1))
-                        + (len(g2) - 1) * float(np.var(g2, ddof=1))
-                    )
-                    / (len(g1) + len(g2) - 2)
+        # Cohen's d (pooled) + Hedges' g (small-sample bias correction)
+        if len(g1) > 1 and len(g2) > 1 and not paired:
+            pooled_sd = math.sqrt(
+                (
+                    (len(g1) - 1) * float(np.var(g1, ddof=1))
+                    + (len(g2) - 1) * float(np.var(g2, ddof=1))
                 )
-                if (not paired and equal_var)
-                else None
+                / (len(g1) + len(g2) - 2)
             )
             if pooled_sd and pooled_sd > 0:
                 d = (float(np.mean(g1)) - float(np.mean(g2))) / pooled_sd
                 out["cohens_d"] = round(float(d), 4)
+                # Hedges & Olkin (1985) small-sample correction factor
+                df = len(g1) + len(g2) - 2
+                if df > 2:
+                    j = 1 - 3 / (4 * df - 5)
+                    out["hedges_g"] = round(float(d) * j, 4)
     else:
         u_stat, p_val = mannwhitneyu(g1, g2, alternative=alternative)
         out.update(
@@ -445,8 +446,32 @@ def stat_anova(
 # ---------------------------------------------------------------------------
 
 
-def stat_correlate(file_path: str, x: str, y: str, *, method: str = "pearson") -> dict:
-    """Correlation between two columns with 95% CI and p-value."""
+def stat_correlate(
+    file_path: str,
+    x: str,
+    y: str,
+    *,
+    method: str = "pearson",
+    alpha: float = 0.05,
+    bootstrap: int = 0,
+    seed: Optional[int] = None,
+) -> dict:
+    """Correlation between two columns with CI and p-value.
+
+    Parameters
+    ----------
+    method : str
+        "pearson" (95% CI via Fisher z), "spearman" or "kendall"
+        (CI via percentile bootstrap when ``bootstrap > 0``).
+    alpha : float
+        Significance level for the confidence interval (default 0.05).
+    bootstrap : int
+        Number of bootstrap resamples for non-parametric CI.
+        0 (default) skips the bootstrap and returns ``ci95=[null, null]``
+        for Spearman / Kendall.
+    seed : int, optional
+        RNG seed for bootstrap reproducibility.
+    """
     if _ss is None:
         return {
             "ok": False,
@@ -470,24 +495,23 @@ def stat_correlate(file_path: str, x: str, y: str, *, method: str = "pearson") -
     method = method.lower()
     if method == "pearson":
         r, p = pearsonr(xv, yv)
+        # 95% CI via Fisher z
+        z = np.arctanh(r)
+        se = 1.0 / math.sqrt(n - 3) if n > 3 else None
+        ci = _ci(float(z), se, n, alpha=alpha)
+        if ci[0] is not None:
+            ci = [round(math.tanh(ci[0]), 6), round(math.tanh(ci[1]), 6)]
     elif method == "spearman":
         r, p = spearmanr(xv, yv)
+        ci = _bootstrap_ci(xv, yv, "spearman", bootstrap, alpha, seed)
     elif method == "kendall":
         r, p = kendalltau(xv, yv)
+        ci = _bootstrap_ci(xv, yv, "kendall", bootstrap, alpha, seed)
     else:
         return {
             "ok": False,
             "error": {"type": "ValueError", "message": f"unknown method {method}"},
         }
-    # 95% CI via Fisher z for Pearson; bootstrap for non-parametric
-    if method == "pearson":
-        z = np.arctanh(r)
-        se = 1.0 / math.sqrt(n - 3) if n > 3 else None
-        ci = _ci(float(z), se, n)
-        if ci[0] is not None:
-            ci = [round(math.tanh(ci[0]), 6), round(math.tanh(ci[1]), 6)]
-    else:
-        ci = [None, None]
     return {
         "ok": True,
         "result": {
@@ -498,8 +522,45 @@ def stat_correlate(file_path: str, x: str, y: str, *, method: str = "pearson") -
             "r": round(float(r), 6),
             "p_value": float(p),
             "ci95": ci,
+            "alpha": alpha,
         },
     }
+
+
+def _bootstrap_ci(
+    x: "np.ndarray",
+    y: "np.ndarray",
+    method: str,
+    n_boot: int,
+    alpha: float,
+    seed: Optional[int],
+) -> list:
+    """Percentile-bootstrap CI for Spearman / Kendall correlation.
+
+    Returns ``[None, None]`` if ``n_boot <= 0`` (opt-in only — bootstrap is
+    slow on large n).
+    """
+    if n_boot is None or n_boot <= 0:
+        return [None, None]
+    rng = np.random.default_rng(seed)
+    n = len(x)
+    fn = spearmanr if method == "spearman" else kendalltau
+    rs = np.empty(int(n_boot), dtype=float)
+    for i in range(int(n_boot)):
+        idx = rng.integers(0, n, n)
+        try:
+            r_boot, _ = fn(x[idx], y[idx])
+            rs[i] = (
+                float(r_boot) if r_boot is not None and not np.isnan(r_boot) else np.nan
+            )
+        except Exception:  # noqa: BLE001
+            rs[i] = np.nan
+    rs = rs[~np.isnan(rs)]
+    if len(rs) < 10:
+        return [None, None]
+    lo = float(np.quantile(rs, alpha / 2))
+    hi = float(np.quantile(rs, 1 - alpha / 2))
+    return [round(lo, 6), round(hi, 6)]
 
 
 # ---------------------------------------------------------------------------
@@ -654,7 +715,19 @@ def stat_chi_square(
     elif test == "gof" and expected is not None:
         observed = table.flatten().astype(float)
         exp_arr = np.asarray(expected, dtype=float).flatten()
-        chi2, p = _ss.chisquare(observed, f_obs=observed, f_exp=exp_arr)
+        if observed.shape != exp_arr.shape:
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ValueError",
+                    "message": (
+                        f"observed ({observed.shape}) and expected "
+                        f"({exp_arr.shape}) shape mismatch"
+                    ),
+                },
+            }
+        # scipy.stats.chisquare: first positional = observed; f_exp = expected
+        chi2, p = _ss.chisquare(observed, f_exp=exp_arr)
         out.update(
             {
                 "chi2": float(chi2),
@@ -682,8 +755,15 @@ def stat_nonparametric(
     *,
     test: str = "wilcoxon",
     mu: float = 0.0,
+    subject_col: Optional[str] = None,
 ) -> dict:
-    """Non-parametric tests: Wilcoxon, sign, Friedman, Mann-Whitney."""
+    """Non-parametric tests: Wilcoxon, sign, Friedman, Mann-Whitney.
+
+    For Friedman (repeated-measures across >=3 conditions), pass ``subject_col``
+    to identify the within-subject unit. Data may be either long format
+    (one row per subject x condition) or wide format (one row per subject,
+    one column per condition).
+    """
     if _ss is None:
         return {
             "ok": False,
@@ -756,27 +836,45 @@ def stat_nonparametric(
                 "ok": False,
                 "error": {
                     "type": "ValueError",
-                    "message": "friedman requires group_col",
+                    "message": "friedman requires group_col (condition column)",
                 },
             }
-        pivot = df.pivot_table(
-            index=df.index, columns=group_col, values=value_col, aggfunc="first"
-        ).dropna()
-        if pivot.shape[1] < 3:
+        # Long format: need a subject column to pivot
+        if subject_col and subject_col in df.columns:
+            pivot = df.pivot_table(
+                index=subject_col,
+                columns=group_col,
+                values=value_col,
+                aggfunc="first",
+            ).dropna()
+        else:
+            # Wide format: assume one row per subject, columns are conditions.
+            # The original buggy implementation pivoted on df.index, which
+            # collapses a long-format frame to empty. The wide-format case
+            # still works because each row in the wide frame is one subject.
+            pivot = df
+        if pivot.shape[1] < 3 or pivot.shape[0] < 2:
             return {
                 "ok": False,
                 "error": {
                     "type": "ValueError",
-                    "message": "friedman requires >= 3 groups",
+                    "message": (
+                        "friedman requires >= 3 conditions and >= 2 subjects "
+                        f"(got shape {pivot.shape})"
+                    ),
                 },
             }
-        f_stat, p = friedmanchisquare(*[pivot[c].values for c in pivot.columns])
+        f_stat, p = friedmanchisquare(
+            *[pivot[c].dropna().values for c in pivot.columns]
+        )
         out.update(
             {
                 "method": "Friedman",
                 "Q": float(f_stat),
                 "p_value": float(p),
                 "k_groups": int(pivot.shape[1]),
+                "n_subjects": int(pivot.shape[0]),
+                "subject_col": subject_col,
             }
         )
     else:
@@ -833,23 +931,51 @@ def stat_effect_size(
         )
         out["ci95"] = _ci(float(d), se, nx + ny)
     elif kind == "eta_squared" and file_path and var_a:
-        # From ANOVA: compute eta² from group means
-        if var_b is None or var_b not in (x or []):
+        # From ANOVA: var_a = value column, var_b = grouping column.
+        if var_b is None:
             return {
                 "ok": False,
                 "error": {
                     "type": "ValueError",
-                    "message": "var_b required for eta_squared",
+                    "message": "var_b (group column) required for eta_squared",
                 },
             }
         df = _load_dataframe(file_path)
+        if var_a not in df.columns:
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ValueError",
+                    "message": f"var_a '{var_a}' not in dataset",
+                },
+            }
+        if var_b not in df.columns:
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ValueError",
+                    "message": f"var_b '{var_b}' not in dataset",
+                },
+            }
         groups = [g[var_a].dropna().values for _, g in df.groupby(var_b)]
+        groups = [g for g in groups if len(g) > 0]
+        if len(groups) < 2:
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ValueError",
+                    "message": "eta_squared requires >= 2 groups",
+                },
+            }
         all_data = np.concatenate(groups)
         grand_mean = float(np.mean(all_data))
         ss_between = sum(len(g) * (float(np.mean(g)) - grand_mean) ** 2 for g in groups)
-        ss_total = sum((x - grand_mean) ** 2 for x in all_data)
+        ss_total = float(np.sum((all_data - grand_mean) ** 2))
         eta2 = ss_between / ss_total if ss_total > 0 else None
         out["value"] = round(float(eta2), 4) if eta2 is not None else None
+        out["n_groups"] = len(groups)
+        out["value_col"] = var_a
+        out["group_col"] = var_b
     elif kind in ("cramers_v", "cramer") and file_path and var_a and var_b:
         df = _load_dataframe(file_path)
         table = pd.crosstab(df[var_a], df[var_b]).values
@@ -872,6 +998,29 @@ def stat_effect_size(
                     "message": "odds_ratio requires 2x2 table",
                 },
             }
+    elif kind in ("rank_biserial", "rbs") and x is not None and y is not None:
+        # Rank-biserial correlation: r = 1 - 2U / (n1 * n2)
+        # Uses the Mann-Whitney U convention where U = sum of ranks in x.
+        nx, ny = len(x), len(y)
+        if not x or not y:
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ValueError",
+                    "message": "x and y required for rank-biserial",
+                },
+            }
+        try:
+            u_stat, _ = mannwhitneyu(x, y, alternative="two-sided")
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "ok": False,
+                "error": {"type": exc.__class__.__name__, "message": str(exc)[:120]},
+            }
+        r = 1.0 - (2.0 * float(u_stat)) / (nx * ny)
+        out["value"] = round(float(r), 4)
+        out["n1"], out["n2"] = nx, ny
+        out["u_stat"] = float(u_stat)
     else:
         return {
             "ok": False,
@@ -896,8 +1045,33 @@ def stat_power(
     power: Optional[float] = None,
     nobs: Optional[int] = None,
     alternative: str = "two-sided",
+    df_num: Optional[int] = None,
+    ratio: float = 1.0,
 ) -> dict:
-    """Statistical power: solve for power, sample size, or sensitivity."""
+    """Statistical power: solve for power, sample size, or sensitivity.
+
+    Parameters
+    ----------
+    test : str
+        One of "t" (two-sample t), "f" (one-way F), "chi2" (chi-square GOF),
+        or "z" (two-proportion z).
+    effect_size : float
+        Cohen's d (t), Cohen's f (f), w (chi2), or h (z).
+    alpha : float
+        Significance level (default 0.05).
+    power : float, optional
+        Target power. Mutually exclusive with ``nobs``.
+    nobs : int, optional
+        Sample size. Mutually exclusive with ``power``.
+    alternative : str
+        "two-sided" (default), "larger", or "smaller".
+    df_num : int, optional
+        Numerator df for the F-test (= k - 1 for one-way ANOVA). Required
+        when ``test="f"``; ignored for other tests.
+    ratio : float
+        Sample-size ratio for the second group vs. the first (t / z tests).
+        Default 1.0 (equal groups).
+    """
     if _sm_power is None:
         return {
             "ok": False,
@@ -908,11 +1082,27 @@ def stat_power(
         analyzer = _sm_power.TTestIndPower()
         nobs_kw = "nobs1"
     elif test == "f":
-        analyzer = _sm_power.FTestPower()
+        # One-way ANOVA power. Uses FTestAnovaPower with k_groups = df_num + 1.
+        # df_num = k - 1 where k = number of groups. Default df_num=1 (k=2).
+        k_groups = (int(df_num) + 1) if df_num is not None else 2
+        analyzer = _sm_power.FTestAnovaPower()
         nobs_kw = "nobs"
+        f_kw = "k_groups"
     elif test == "chi2":
         analyzer = _sm_power.GofChisquarePower()
         nobs_kw = "nobs"
+    elif test == "z":
+        # Two-proportion z-test (Cohen's h). Uses NormalIndPower.
+        if not hasattr(_sm_power, "NormalIndPower"):
+            return {
+                "ok": False,
+                "error": {
+                    "type": "ImportError",
+                    "message": "statsmodels >= 0.14 required for z-test power",
+                },
+            }
+        analyzer = _sm_power.NormalIndPower()
+        nobs_kw = "nobs1"
     else:
         return {
             "ok": False,
@@ -924,23 +1114,37 @@ def stat_power(
         "alpha": alpha,
         "alternative": alternative,
     }
+    if df_num is not None:
+        out["df_num"] = int(df_num)
     if nobs is None and power is not None:
-        out["solved_nobs"] = int(
-            math.ceil(
-                analyzer.solve_power(
-                    effect_size=effect_size,
-                    alpha=alpha,
-                    power=power,
-                    alternative=alternative,
-                )
-            )
+        kwargs: dict[str, Any] = dict(
+            effect_size=effect_size,
+            alpha=alpha,
+            power=power,
         )
+        if test in ("t", "z"):
+            kwargs["ratio"] = ratio
+            kwargs["alternative"] = alternative
+        if test == "f":
+            kwargs[f_kw] = k_groups
+        out["solved_nobs"] = int(math.ceil(analyzer.solve_power(**kwargs)))
+        if test == "f":
+            out["k_groups"] = k_groups
     elif power is None and nobs is not None:
-        out["solved_power"] = float(
-            analyzer.solve_power(
-                effect_size=effect_size, alpha=alpha, **{nobs_kw: nobs}
-            )
+        kwargs = dict(
+            effect_size=effect_size,
+            alpha=alpha,
+            power=None,
         )
+        if test == "f":
+            kwargs[f_kw] = k_groups
+        elif test in ("t", "z"):
+            kwargs["ratio"] = ratio
+            kwargs["alternative"] = alternative
+        kwargs[nobs_kw] = int(nobs)
+        out["solved_power"] = float(analyzer.solve_power(**kwargs))
+        if test == "f":
+            out["k_groups"] = k_groups
     else:
         return {
             "ok": False,
@@ -974,6 +1178,14 @@ def stat_outliers(
         }
     method = method.lower()
     per_column: dict[str, Any] = {}
+    if method == "mahalanobis" and len(cols) < 2:
+        return {
+            "ok": False,
+            "error": {
+                "type": "ValueError",
+                "message": (f"mahalanobis requires >= 2 columns, got {len(cols)}"),
+            },
+        }
     if method == "mahalanobis" and len(cols) >= 2:
         sub = df[cols].dropna()
         if len(sub) >= len(cols) + 1:
