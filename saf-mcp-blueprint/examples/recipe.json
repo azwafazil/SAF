@@ -1,0 +1,8 @@
+[
+  {"kind": "descriptives", "variables": ["screen_time", "exam_score"]},
+  {"kind": "frequencies", "variables": ["gender", "programme"]},
+  {"kind": "reliability", "items": ["q1", "q2", "q3", "q4", "q5"]},
+  {"kind": "correlation", "variables": ["screen_time", "exam_score"], "method": "pearson"},
+  {"kind": "anova", "dv": "exam_score", "between": "programme"},
+  {"kind": "regression", "dv": "exam_score", "predictors": ["screen_time", "q1", "q2"]}
+]

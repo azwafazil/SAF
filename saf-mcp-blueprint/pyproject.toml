@@ -1,0 +1,38 @@
+[project]
+name = "saf-mcp"
+version = "0.1.0"
+description = "SAF MCP: an SPSS-compatible statistical assistant MCP server"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Azwa / SAF contributors"}]
+dependencies = [
+  "mcp[cli]>=1.0.0",
+  "pandas>=2.2.0",
+  "numpy>=1.26.0",
+  "scipy>=1.12.0",
+  "statsmodels>=0.14.0",
+  "pingouin>=0.5.4",
+  "pyreadstat>=1.2.7",
+  "pydantic>=2.6.0",
+  "tabulate>=0.9.0",
+  "openpyxl>=3.1.0",
+  "matplotlib>=3.8.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.5.0",
+  "mypy>=1.8.0"
+]
+
+[project.scripts]
+saf-mcp = "saf_mcp.server:main"
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
