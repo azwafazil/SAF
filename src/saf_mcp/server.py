@@ -28,6 +28,20 @@ from .spss_utils import (
     write_csv,
     write_sav,
 )
+from .stats import (
+    stat_anova,
+    stat_assumptions,
+    stat_chi_square,
+    stat_compare_groups,
+    stat_correlate,
+    stat_descriptives,
+    stat_effect_size,
+    stat_missing,
+    stat_nonparametric,
+    stat_outliers,
+    stat_power,
+    stat_regress,
+)
 
 mcp = FastMCP("SAF")
 
@@ -64,7 +78,9 @@ def list_data_files() -> dict[str, Any]:
                         "size_bytes": path.stat().st_size,
                     }
                 )
-        return _success(data_root=str(root), files=sorted(files, key=lambda item: item["path"]))
+        return _success(
+            data_root=str(root), files=sorted(files, key=lambda item: item["path"])
+        )
     except Exception as exc:  # noqa: BLE001 - MCP tools should return structured errors.
         return _error(exc)
 
@@ -75,7 +91,9 @@ def inspect_spss_metadata(path: str) -> dict[str, Any]:
     try:
         dataset_path = require_existing_dataset(path, SPSS_EXTENSIONS)
         _, metadata = read_spss(dataset_path, metadata_only=True)
-        return _success(path=relative_to_root(dataset_path), metadata=metadata_to_dict(metadata))
+        return _success(
+            path=relative_to_root(dataset_path), metadata=metadata_to_dict(metadata)
+        )
     except Exception as exc:  # noqa: BLE001
         return _error(exc)
 
@@ -153,7 +171,9 @@ def convert_csv_to_sav(path: str, output_path: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def generate_basic_spss_syntax(path: str, variables: list[str] | None = None) -> dict[str, Any]:
+def generate_basic_spss_syntax(
+    path: str, variables: list[str] | None = None
+) -> dict[str, Any]:
     """Generate basic SPSS syntax without executing it."""
     try:
         dataset_path = require_existing_dataset(path, SPSS_EXTENSIONS)
@@ -165,6 +185,195 @@ def generate_basic_spss_syntax(path: str, variables: list[str] | None = None) ->
                 raise ValueError(f"Unknown variables: {', '.join(unknown)}")
         syntax = basic_spss_syntax(relative_to_root(dataset_path), variables)
         return _success(path=relative_to_root(dataset_path), syntax=syntax)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Statistical analysis tools (12 stat_* primitives)
+# Donated 2026-06-02 by Muhammad Arif bin Fazil <ariffazil@arif-fazil.com>
+# Originally forged as part of the arifOS sovereign organ (decommissioned);
+# ported to upstream-style (no F1-F13, no VAULT999) for inclusive reuse.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@mcp.tool()
+def saf_stat_descriptives(path: str, columns: list[str]) -> dict[str, Any]:
+    """Univariate summary (n, mean, sd, median, min, max, IQR, MAD, skew, kurtosis, 95% CI)."""
+    try:
+        return stat_descriptives(path, columns)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_assumptions(
+    path: str, columns: list[str], group_col: str | None = None
+) -> dict[str, Any]:
+    """Shapiro-Wilk normality (D'Agostino fallback for n>5000) + Levene homoscedasticity."""
+    try:
+        return stat_assumptions(path, columns, group_col)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_compare_groups(
+    path: str,
+    value_col: str,
+    group_col: str,
+    paired: bool = False,
+    parametric: bool = True,
+    equal_var: bool = False,
+) -> dict[str, Any]:
+    """Two-group comparison: t-test (indep/paired/Welch) + Mann-Whitney, with Cohen's d."""
+    try:
+        return stat_compare_groups(
+            path,
+            value_col,
+            group_col,
+            paired=paired,
+            parametric=parametric,
+            equal_var=equal_var,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_anova(
+    path: str,
+    value_col: str,
+    group_col: str,
+    welch: bool = False,
+    post_hoc: bool = True,
+) -> dict[str, Any]:
+    """One-way ANOVA: classic / Welch / Kruskal-Wallis, with optional Tukey HSD."""
+    try:
+        return stat_anova(path, value_col, group_col, welch=welch, post_hoc=post_hoc)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_correlate(
+    path: str, x: str, y: str, method: str = "pearson"
+) -> dict[str, Any]:
+    """Correlation: Pearson / Spearman / Kendall with 95% CI (Fisher z for Pearson)."""
+    try:
+        return stat_correlate(path, x, y, method=method)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_regress(
+    path: str,
+    dependent: str,
+    independents: list[str],
+    family: str = "ols",
+    robust: bool = False,
+) -> dict[str, Any]:
+    """OLS / logistic / robust (HC3) regression with coefficients, CIs, AIC/BIC, VIF (OLS)."""
+    try:
+        return stat_regress(path, dependent, independents, family=family, robust=robust)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_chi_square(
+    path: str,
+    var_a: str,
+    var_b: str,
+    test: str = "independence",
+    expected: list[list[float]] | None = None,
+) -> dict[str, Any]:
+    """Chi-square test of independence / goodness-of-fit + Fisher's exact (2x2)."""
+    try:
+        return stat_chi_square(path, var_a, var_b, test=test, expected=expected)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_nonparametric(
+    path: str,
+    value_col: str,
+    group_col: str | None = None,
+    test: str = "wilcoxon",
+    mu: float = 0.0,
+) -> dict[str, Any]:
+    """Non-parametric tests: Wilcoxon, sign, Friedman, Mann-Whitney (auto), Kruskal-Wallis (auto)."""
+    try:
+        return stat_nonparametric(path, value_col, group_col, test=test, mu=mu)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_effect_size(
+    kind: str,
+    x: list[float] | None = None,
+    y: list[float] | None = None,
+    file_path: str | None = None,
+    var_a: str | None = None,
+    var_b: str | None = None,
+) -> dict[str, Any]:
+    """Effect size: Cohen's d, η², Cramér's V, odds ratio, rank-biserial."""
+    try:
+        return stat_effect_size(
+            kind=kind,
+            x=x,
+            y=y,
+            file_path=file_path,
+            var_a=var_a,
+            var_b=var_b,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_power(
+    test: str,
+    effect_size: float,
+    alpha: float = 0.05,
+    power: float | None = None,
+    nobs: int | None = None,
+) -> dict[str, Any]:
+    """Statistical power: solve for power, sample size, or sensitivity (t / f / chi2 / z)."""
+    try:
+        return stat_power(
+            test=test,
+            effect_size=effect_size,
+            alpha=alpha,
+            power=power,
+            nobs=nobs,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_outliers(
+    path: str,
+    columns: list[str],
+    method: str = "iqr",
+    threshold: float = 1.5,
+) -> dict[str, Any]:
+    """Outlier detection: IQR (Tukey), z-score, modified z (Iglewicz-Hoaglin), Mahalanobis (multi)."""
+    try:
+        return stat_outliers(path, columns, method=method, threshold=threshold)
+    except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+@mcp.tool()
+def saf_stat_missing(path: str) -> dict[str, Any]:
+    """Missing-data profile: per-column counts/pcts, complete-row ratio, MCAR association sketch."""
+    try:
+        return stat_missing(path)
     except Exception as exc:  # noqa: BLE001
         return _error(exc)
 
