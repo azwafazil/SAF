@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saf-mcp"
-version = "0.1.0"
-description = "An MCP server for SPSS-compatible datasets: SAV, ZSAV, POR, metadata inspection, data preview, conversion, profiling, and basic SPSS syntax generation."
+version = "0.2.0"
+description = "An MCP server for SPSS-compatible datasets: SAV, ZSAV, POR, XLSX, CSV, metadata inspection, data preview, conversion, profiling, frequencies, crosstabs, reliability, and SPSS syntax generation."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -32,6 +32,7 @@ dependencies = [
   "scipy>=1.10",
   "statsmodels>=0.14",
   "pingouin>=0.5",
+  "openpyxl",
 ]
 
 [project.scripts]

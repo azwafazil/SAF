@@ -8,7 +8,7 @@ from pathlib import Path
 DATA_ROOT_ENV = "SAF_DATA_ROOT"
 
 SPSS_EXTENSIONS = {".sav", ".zsav", ".por"}
-TABULAR_EXTENSIONS = {".csv", ".tsv"}
+TABULAR_EXTENSIONS = {".csv", ".tsv", ".xlsx"}
 SUPPORTED_EXTENSIONS = SPSS_EXTENSIONS | TABULAR_EXTENSIONS
 
 

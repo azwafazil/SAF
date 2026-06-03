@@ -68,7 +68,7 @@ from .security import (
     TABULAR_EXTENSIONS,
     extension_for,
 )
-from .spss_utils import read_spss, read_tabular
+from .spss_utils import frequency_table, read_spss, read_tabular
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
@@ -1342,6 +1342,128 @@ def stat_missing(file_path: str) -> dict:
     }
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# stat_reliability — Cronbach's alpha for scale reliability
+# (survey research, questionnaire validation)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def stat_reliability(path: str, columns: list[str]) -> dict[str, Any]:
+    _verify_deps()
+    df = _load_dataframe(path)
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"Columns not found in dataset: {missing}")
+    sub = df[columns].dropna()
+    n_items = len(columns)
+    n_subjects = len(sub)
+    if n_subjects < 2:
+        raise ValueError(
+            f"Need at least 2 complete rows for reliability, got {n_subjects}."
+        )
+    if n_items < 2:
+        raise ValueError("Need at least 2 items for Cronbach's alpha.")
+    item_var = sub.var(ddof=1)
+    total_var = sub.sum(axis=1).var(ddof=1)
+    alpha = (n_items / (n_items - 1)) * (1 - item_var.sum() / total_var)
+    # item-level diagnostics
+    item_diagnostics = []
+    for c in columns:
+        without = [x for x in columns if x != c]
+        sub_without = sub[without]
+        var_without = sub_without.sum(axis=1).var(ddof=1)
+        if n_items > 2:
+            alpha_without = ((n_items - 1) / (n_items - 2)) * (
+                1 - sub_without.var(ddof=1).sum() / var_without
+            )
+        else:
+            alpha_without = None
+        item_diagnostics.append(
+            {
+                "item": c,
+                "n": int(sub[c].notna().sum()),
+                "mean": round(float(sub[c].mean()), 4),
+                "sd": round(float(sub[c].std(ddof=1)), 4),
+                "alpha_if_deleted": round(alpha_without, 4) if alpha_without else None,
+            }
+        )
+    interpretation = (
+        "Excellent"
+        if alpha >= 0.9
+        else "Good"
+        if alpha >= 0.8
+        else "Acceptable"
+        if alpha >= 0.7
+        else "Questionable"
+        if alpha >= 0.6
+        else "Poor"
+        if alpha >= 0.5
+        else "Unacceptable"
+    )
+    return {
+        "ok": True,
+        "n_items": n_items,
+        "n_subjects": n_subjects,
+        "cronbach_alpha": round(float(alpha), 4),
+        "interpretation": interpretation,
+        "item_diagnostics": item_diagnostics,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# stat_frequencies — frequency tables for categorical/ordinal variables
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def stat_frequencies(path: str, columns: list[str]) -> dict[str, Any]:
+    df = _load_dataframe(path)
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        raise ValueError(f"Columns not found in dataset: {missing}")
+    tables = []
+    for c in columns:
+        tables.append(frequency_table(df[c]))
+    return {"ok": True, "n_variables": len(tables), "tables": tables}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# stat_describe_all — describe all numeric columns at once
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def stat_describe_all(path: str) -> dict[str, Any]:
+    df = _load_dataframe(path)
+    numeric = df.select_dtypes(include="number")
+    if numeric.empty:
+        return {
+            "ok": True,
+            "n_numeric": 0,
+            "message": "No numeric columns found in dataset.",
+            "columns": [],
+        }
+    results = []
+    for c in numeric.columns:
+        s = numeric[c].dropna()
+        q = s.quantile([0.25, 0.5, 0.75])
+        results.append(
+            {
+                "column": c,
+                "n": int(len(s)),
+                "missing": int(numeric[c].isna().sum()),
+                "mean": round(float(s.mean()), 4),
+                "sd": round(float(s.std(ddof=1)), 4),
+                "min": round(float(s.min()), 4),
+                "q25": round(float(q.iloc[0]), 4),
+                "median": round(float(q.iloc[1]), 4),
+                "q75": round(float(q.iloc[2]), 4),
+                "max": round(float(s.max()), 4),
+                "skew": round(float(s.skew()), 4),
+                "kurtosis": round(float(s.kurtosis()), 4),
+            }
+        )
+    return {"ok": True, "n_numeric": len(results), "columns": results}
+
+
 __all__ = [
     "stat_descriptives",
     "stat_assumptions",
@@ -1355,4 +1477,7 @@ __all__ = [
     "stat_power",
     "stat_outliers",
     "stat_missing",
+    "stat_reliability",
+    "stat_frequencies",
+    "stat_describe_all",
 ]

@@ -97,7 +97,29 @@ def read_tabular(path: Path) -> pd.DataFrame:
         return pd.read_csv(path)
     if ext == ".tsv":
         return pd.read_csv(path, sep="\t")
-    raise ValueError(f"Expected a CSV or TSV file, got {ext}.")
+    if ext == ".xlsx":
+        return pd.read_excel(path, engine="openpyxl")
+    raise ValueError(f"Expected a CSV, TSV, or XLSX file, got {ext}.")
+
+
+def frequency_table(series: pd.Series) -> dict[str, Any]:
+    vals = series.dropna()
+    counts = vals.value_counts()
+    total = int(len(vals))
+    return {
+        "variable": str(series.name),
+        "valid_n": total,
+        "missing_n": int(series.isna().sum()),
+        "unique_n": int(counts.nunique()),
+        "frequencies": [
+            {
+                "value": None if pd.isna(k) else k,
+                "count": int(v),
+                "percent": round(float(v) / total * 100, 2) if total > 0 else 0.0,
+            }
+            for k, v in counts.items()
+        ],
+    }
 
 
 def write_csv(df: pd.DataFrame, output_path: Path) -> None:
