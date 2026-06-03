@@ -257,11 +257,30 @@ def saf_stat_anova(
 
 @mcp.tool()
 def saf_stat_correlate(
-    path: str, x: str, y: str, method: str = "pearson"
+    path: str,
+    x: str,
+    y: str,
+    method: str = "pearson",
+    alpha: float = 0.05,
+    bootstrap: int = 0,
+    seed: int | None = None,
 ) -> dict[str, Any]:
-    """Correlation: Pearson / Spearman / Kendall with 95% CI (Fisher z for Pearson)."""
+    """Correlation: Pearson / Spearman / Kendall with CI.
+
+    Pearson: 95% CI via Fisher z-transform.
+    Spearman / Kendall: CI via percentile bootstrap when ``bootstrap > 0``.
+    Set ``seed`` for reproducible bootstrap.
+    """
     try:
-        return stat_correlate(path, x, y, method=method)
+        return stat_correlate(
+            path,
+            x,
+            y,
+            method=method,
+            alpha=alpha,
+            bootstrap=bootstrap,
+            seed=seed,
+        )
     except Exception as exc:  # noqa: BLE001
         return _error(exc)
 
@@ -303,10 +322,22 @@ def saf_stat_nonparametric(
     group_col: str | None = None,
     test: str = "wilcoxon",
     mu: float = 0.0,
+    subject_col: str | None = None,
 ) -> dict[str, Any]:
-    """Non-parametric tests: Wilcoxon, sign, Friedman, Mann-Whitney (auto), Kruskal-Wallis (auto)."""
+    """Non-parametric tests: Wilcoxon, sign, Friedman, Mann-Whitney (auto), Kruskal-Wallis (auto).
+
+    For Friedman (repeated-measures, >=3 conditions), pass ``subject_col``
+    to identify within-subject units when data is in long format.
+    """
     try:
-        return stat_nonparametric(path, value_col, group_col, test=test, mu=mu)
+        return stat_nonparametric(
+            path,
+            value_col,
+            group_col,
+            test=test,
+            mu=mu,
+            subject_col=subject_col,
+        )
     except Exception as exc:  # noqa: BLE001
         return _error(exc)
 
@@ -320,7 +351,15 @@ def saf_stat_effect_size(
     var_a: str | None = None,
     var_b: str | None = None,
 ) -> dict[str, Any]:
-    """Effect size: Cohen's d, η², Cramér's V, odds ratio, rank-biserial."""
+    """Effect size: Cohen's d, η², Cramér's V, odds ratio, rank-biserial.
+
+    Kinds:
+      - "cohens_d" / "cohen":  x, y required (raw samples)
+      - "eta_squared":         file_path, var_a=value_col, var_b=group_col
+      - "cramers_v" / "cramer": file_path, var_a, var_b (categorical)
+      - "odds_ratio" / "or":   file_path, var_a, var_b (2x2 table)
+      - "rank_biserial" / "rbs": x, y required (raw samples)
+    """
     try:
         return stat_effect_size(
             kind=kind,
@@ -341,8 +380,16 @@ def saf_stat_power(
     alpha: float = 0.05,
     power: float | None = None,
     nobs: int | None = None,
+    alternative: str = "two-sided",
+    df_num: int | None = None,
+    ratio: float = 1.0,
 ) -> dict[str, Any]:
-    """Statistical power: solve for power, sample size, or sensitivity (t / f / chi2 / z)."""
+    """Statistical power: solve for power, sample size, or sensitivity.
+
+    Supported tests: "t" (two-sample t, Cohen's d), "f" (one-way F, Cohen's f;
+    requires ``df_num`` = k-1), "chi2" (chi-square GOF, Cohen's w),
+    "z" (two-proportion z, Cohen's h).
+    """
     try:
         return stat_power(
             test=test,
@@ -350,6 +397,9 @@ def saf_stat_power(
             alpha=alpha,
             power=power,
             nobs=nobs,
+            alternative=alternative,
+            df_num=df_num,
+            ratio=ratio,
         )
     except Exception as exc:  # noqa: BLE001
         return _error(exc)

@@ -88,24 +88,48 @@ MCP_TRANSPORT=streamable-http saf-mcp
 
 ## MCP Capabilities
 
-Tools:
+The server exposes **19 tools** in three groups.
 
-- `list_data_files`
-- `inspect_spss_metadata`
-- `preview_spss_data`
-- `profile_spss_data`
-- `convert_spss_to_csv`
-- `convert_csv_to_sav`
-- `generate_basic_spss_syntax`
+### Dataset tools (7)
 
-Resources:
+| Tool | Purpose |
+|------|---------|
+| `list_data_files` | Enumerate supported files under `SAF_DATA_ROOT`. |
+| `inspect_spss_metadata` | Read column names, labels, value labels, formats. |
+| `preview_spss_data` | Return the first *N* rows (1-500). |
+| `profile_spss_data` | Per-column dtype, missing count, top values, summary stats. |
+| `convert_spss_to_csv` | Write a `.sav` / `.zsav` / `.por` to CSV inside the sandbox. |
+| `convert_csv_to_sav` | Write a CSV / TSV to `.sav` inside the sandbox. |
+| `generate_basic_spss_syntax` | Produce SPSS syntax (not execute it) for inspection. |
 
-- `saf://guide`
-- `saf://repo-ingestion`
+### Statistical analysis tools (12, donated)
 
-Prompt:
+All `saf_stat_*` tools accept either SPSS-compatible files (`.sav`, `.zsav`,
+`.por`) or tabular files (`.csv`, `.tsv`) and return plain Python dicts —
+no F1-F13 governance, no VAULT999 sealing.
 
-- `analyze_dataset_prompt`
+| Tool | What it computes |
+|------|------------------|
+| `saf_stat_descriptives` | n, mean, sd, median, min/max, IQR, MAD, skew, kurtosis, 95% CI of mean. |
+| `saf_stat_assumptions` | Shapiro-Wilk normality (D'Agostino fallback for n>5000) + Levene homoscedasticity. |
+| `saf_stat_compare_groups` | Two-group t-test (indep / paired / Welch) or Mann-Whitney, with Cohen's d + Hedges' g. |
+| `saf_stat_anova` | One-way ANOVA (classic / Welch / Kruskal-Wallis) with optional Tukey HSD + eta-squared. |
+| `saf_stat_correlate` | Pearson (Fisher-z CI), Spearman, Kendall. Spearman/Kendall support bootstrap CI. |
+| `saf_stat_regress` | OLS / logistic / robust (HC3) regression with CIs, AIC/BIC, VIF (OLS). |
+| `saf_stat_chi_square` | Independence test + Cramér's V + Fisher's exact (2x2); GOF test with user-supplied expected. |
+| `saf_stat_nonparametric` | Wilcoxon signed-rank, sign test, Friedman (long or wide format), Mann-Whitney (auto), Kruskal-Wallis (auto). |
+| `saf_stat_effect_size` | Cohen's d, η², Cramér's V, odds ratio, rank-biserial correlation. |
+| `saf_stat_power` | Solve for power / sample size / sensitivity: t-test (d), one-way F (f, k_groups), chi-square (w), z (h). |
+| `saf_stat_outliers` | IQR (Tukey), z-score, modified z (Iglewicz–Hoaglin), Mahalanobis (multi-column). |
+| `saf_stat_missing` | Per-column counts / pcts, complete-row ratio, MCAR-association sketch. |
+
+### Resources & prompt
+
+| URI / name | Purpose |
+|------------|---------|
+| `saf://guide` | Quick orientation to the server. |
+| `saf://repo-ingestion` | Reminder of the SAF_DATA_ROOT sandbox rule. |
+| `analyze_dataset_prompt` | Templated prompt for guiding an LLM through inspect → preview → profile. |
 
 ## Example User Prompts
 
