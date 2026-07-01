@@ -4,7 +4,7 @@ from saf_mcp.server import mcp
 
 
 def test_imports() -> None:
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.3.0"
     assert mcp is not None
 
 

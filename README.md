@@ -1,12 +1,19 @@
 # SAF — Statistical Analysis Forge
 
-**An MCP server for SPSS-compatible datasets with rich statistical analysis, frequencies, crosstabs, reliability analysis, and AI-ready interfaces.**
+**An SPSS-compatible MCP server for social science research, survey analysis, and reproducible statistics.**
 
 SAF is a privacy-first [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server for working with SPSS-compatible datasets (`.sav`, `.zsav`, `.por`) and tabular files (`.csv`, `.tsv`, `.xlsx`). Built on [`pyreadstat`](https://github.com/Roche/pyreadstat), it enables AI clients and LLMs to inspect metadata, preview rows, profile variables, run frequencies & crosstabs, assess scale reliability, generate SPSS syntax, and perform comprehensive statistical analyses — all while keeping data local and secure.
 
+> **SAF = SPSS-compatible AI statistical assistant.** Not an IBM SPSS replacement, but a powerful co-pilot for students and researchers.
+
 ## What SAF Is
 
-- ✅ A Python MCP server implementing **24 specialized tools** for dataset inspection and analysis
+- ✅ A Python MCP server implementing **28 specialized tools** for dataset inspection and analysis
+- ✅ SPSS-style Data Dictionary — variable labels, value labels, measure level, missing rules, suggested research role (IV, DV, grouping, scale item)
+- ✅ Analysis Recipe Runner — batch multiple analyses in one call with APA interpretations and SPSS syntax
+- ✅ APA 7-style interpretation generator for every statistical test
+- ✅ SPSS Syntax Generator v2 — DESCRIPTIVES, FREQUENCIES, CROSSTABS, T-TEST, ONEWAY, CORRELATIONS, REGRESSION, RELIABILITY
+- ✅ Markdown report exporter — full assignment-ready reports
 - ✅ Local-first, privacy-preserving assistant for `.sav`, `.zsav`, `.por`, `.csv`, `.tsv`, and `.xlsx` files
 - ✅ Designed for research, survey, and teaching workflows with sensitive respondent data
 - ✅ Sandbox-enforced with filesystem isolation via `SAF_DATA_ROOT`
@@ -50,12 +57,12 @@ export SAF_DATA_ROOT=/absolute/path/to/your/saf-data
 
 ```bash
 saf-mcp                                          # stdio (default)
-MCP_TRANSPORT=streamable-http saf-mcp            # HTTP/SSE
+MCP_TRANSPORT=streamable-http saf-mcp            # HTTP/SSE (for nasf.cloud)
 ```
 
 ## MCP Tools Overview
 
-SAF exposes **24 tools** in four groups:
+SAF exposes **28 tools** in six groups:
 
 ### Dataset Operations (7 tools)
 
@@ -69,7 +76,21 @@ SAF exposes **24 tools** in four groups:
 | `convert_csv_to_sav` | Write `.csv` / `.tsv` / `.xlsx` → `.sav` |
 | `generate_basic_spss_syntax` | Generate SPSS syntax (read-only) |
 
-### Survey Analysis (4 new tools)
+### Data Intelligence (3 new tools)
+
+| Tool | Purpose |
+|------|---------|
+| `inspect_dataset` | SPSS-style data dictionary: variable labels, value labels, measure level, missing counts, suggested research role |
+| `run_analysis_recipe` | Batch multiple analyses in one call with APA interpretations and SPSS syntax |
+| `export_markdown_report` | Generate a complete Markdown report from a recipe result |
+
+### SPSS Syntax Generator v2
+
+| Tool | Purpose |
+|------|---------|
+| `generate_spss_syntax_v2` | Generate DESCRIPTIVES, FREQUENCIES, CROSSTABS, T-TEST, ONEWAY, CORRELATIONS, REGRESSION, or RELIABILITY syntax |
+
+### Survey Analysis (4 tools)
 
 | Tool | Purpose |
 |------|---------|
@@ -107,8 +128,8 @@ SAF exposes **24 tools** in four groups:
 |----------|---------|
 | `saf://guide` | Quick orientation to SAF and its capabilities |
 | `saf://repo-ingestion` | Reminder of sandbox rules and data safety |
-| `analyze_dataset_prompt` | Guided analysis workflow: inspect → preview → profile → frequencies → describe → missing |
-| `survey_analysis_prompt` | Survey-specific workflow with optional reliability analysis |
+| `analyze_dataset_prompt` | Guided analysis workflow: inspect → preview → profile → frequencies → describe → recipe → report |
+| `survey_analysis_prompt` | Survey-specific workflow with optional reliability analysis and recipe runner |
 
 ## Live Deployment
 
@@ -133,6 +154,10 @@ Connect any MCP-compatible agent (opencode, Hermes, Claude Code) via:
 
 ## Example User Prompts
 
+- **"Run an analysis recipe: descriptives on age and score, then correlation between screen_time and exam_score, then regression."**
+- **"Generate a full data dictionary with variable labels and suggested roles for survey.sav."**
+- **"Export a Markdown report of the analysis I just ran."**
+- **"Generate SPSS syntax for a t-test comparing exam_score by gender."**
 - **"List the datasets in my SAF data root."**
 - **"Inspect metadata for `survey.sav`."**
 - **"Run frequencies on `gender`, `age_group`, and `education` from `survey.sav`."**
@@ -140,7 +165,6 @@ Connect any MCP-compatible agent (opencode, Hermes, Claude Code) via:
 - **"Check Cronbach's alpha for items q1 through q10 in `questionnaire.sav`."**
 - **"Describe all numeric columns in `data.sav`."**
 - **"Convert `data.xlsx` to `data.sav`."**
-- **"Run descriptive statistics for age, split by gender, from `survey.sav`."**
 
 ## Security & Privacy
 
@@ -159,10 +183,15 @@ Connect any MCP-compatible agent (opencode, Hermes, Claude Code) via:
 
 ```
 saf_mcp/
-├── server.py          # MCP server entrypoint & tool registration
+├── server.py          # MCP server entrypoint & 28 tool registrations
+├── config.py          # Environment configuration
 ├── security.py        # Sandbox enforcement & extension validation
-├── spss_utils.py      # SPSS/tabular read, write, preview, profile, frequencies
+├── spss_utils.py      # SPSS/tabular read, write, preview, profile
 ├── stats.py           # 15 statistical analysis primitives
+├── metadata.py        # SPSS-style data dictionary
+├── recipes.py         # Analysis recipe runner
+├── reporting.py       # APA 7 interpretation + Markdown report generator
+├── syntax.py          # SPSS syntax generator v2
 └── __init__.py        # Package metadata
 ```
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -29,6 +30,20 @@ from .spss_utils import (
     write_sav,
 )
 from .spss_utils import frequency_table
+
+from .metadata import build_data_dictionary
+from .recipes import run_recipe
+from .reporting import generate_markdown_report
+from .syntax import (
+    syntax_descriptives,
+    syntax_frequencies,
+    syntax_crosstabs,
+    syntax_ttest,
+    syntax_oneway,
+    syntax_correlations,
+    syntax_regression,
+    syntax_reliability,
+)
 
 from .stats import (
     stat_anova,
@@ -194,6 +209,147 @@ def generate_basic_spss_syntax(
         syntax = basic_spss_syntax(relative_to_root(dataset_path), variables)
         return _success(path=relative_to_root(dataset_path), syntax=syntax)
     except Exception as exc:  # noqa: BLE001
+        return _error(exc)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Data Dictionary Tool (SPSS-style Variable View)
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def inspect_dataset(path: str) -> dict[str, Any]:
+    """SPSS-style data dictionary: variable names, labels, value labels, measure
+    level, missing counts, data types, unique values, and suggested research role
+    (IV, DV, grouping, scale_item, identifier). Works for .sav, .zsav, .por,
+    .csv, .tsv, and .xlsx files.
+
+    This is the enhanced replacement for inspect_spss_metadata — it returns
+    richer, more structured metadata suitable for social science research.
+    """
+    try:
+        from .spss_utils import metadata_to_dict
+
+        p = Path(path)
+        ext = p.suffix.lower()
+        spss_meta = None
+        if ext in SPSS_EXTENSIONS:
+            dataset_path = require_existing_dataset(path, SPSS_EXTENSIONS)
+            _, metadata = read_spss(dataset_path, metadata_only=True)
+            spss_meta = metadata_to_dict(metadata)
+        return build_data_dictionary(path, spss_metadata=spss_meta)
+    except Exception as exc:
+        return _error(exc)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Analysis Recipe Runner — batch multiple analyses in one call
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def run_analysis_recipe(
+    path: str,
+    steps: list[dict[str, Any]],
+    generate_syntax: bool = True,
+    include_apa: bool = True,
+) -> dict[str, Any]:
+    """Run a batch of analyses in one call. Each step is a dict with a ``kind``
+    key (e.g. ``descriptives``, ``reliability``, ``correlation``, ``regression``,
+    ``compare_groups``, ``anova``, ``chi_square``, ``frequencies``, ``missing``,
+    ``outliers``, ``assumptions``, ``describe_all``). Returns JSON results, APA
+    interpretations, and optional SPSS syntax per step.
+
+    Example recipe:
+    .. code-block:: json
+
+      [
+        {"kind": "descriptives", "variables": ["age", "score"]},
+        {"kind": "reliability", "items": ["q1", "q2", "q3"]},
+        {"kind": "correlation", "x": "age", "y": "score"}
+      ]
+    """
+    try:
+        return run_recipe(path, steps, generate_syntax=generate_syntax, include_apa=include_apa)
+    except Exception as exc:
+        return _error(exc)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# SPSS Syntax Generator v2 — extended command coverage
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def generate_spss_syntax_v2(
+    path: str,
+    kind: str,
+    variables: list[str] | None = None,
+    dependent: str | None = None,
+    independents: list[str] | None = None,
+    group_col: str | None = None,
+    row_var: str | None = None,
+    col_var: str | None = None,
+    items: list[str] | None = None,
+) -> dict[str, Any]:
+    """Generate SPSS syntax for a specific analysis type.
+
+    Parameters
+    ----------
+    path : str  Dataset path relative to SAF_DATA_ROOT.
+    kind : str  One of: ``descriptives``, ``frequencies``, ``crosstabs``,
+                ``ttest``, ``anova``, ``correlation``, ``regression``, ``reliability``.
+    variables, dependent, independents, group_col, row_var, col_var, items :
+        Additional parameters as required by the syntax type.
+    """
+    try:
+        dataset_path = require_existing_dataset(path, SPSS_EXTENSIONS | TABULAR_EXTENSIONS)
+        rel_path = relative_to_root(dataset_path)
+
+        if kind == "descriptives" and variables:
+            syntax = syntax_descriptives(rel_path, variables)
+        elif kind == "frequencies" and variables:
+            syntax = syntax_frequencies(rel_path, variables)
+        elif kind == "crosstabs" and row_var and col_var:
+            syntax = syntax_crosstabs(rel_path, row_var, col_var)
+        elif kind == "ttest" and dependent:
+            syntax = syntax_ttest(rel_path, dependent, group_col=group_col)
+        elif kind == "anova" and dependent and group_col:
+            syntax = syntax_oneway(rel_path, dependent, group_col)
+        elif kind == "correlation" and variables:
+            syntax = syntax_correlations(rel_path, variables)
+        elif kind == "regression" and dependent and independents:
+            syntax = syntax_regression(rel_path, dependent, independents)
+        elif kind == "reliability" and items:
+            syntax = syntax_reliability(rel_path, items)
+        else:
+            raise ValueError(f"Missing required parameters for syntax kind '{kind}'.")
+
+        return _success(path=rel_path, kind=kind, syntax=syntax)
+    except Exception as exc:
+        return _error(exc)
+
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Markdown Report Exporter
+# ───────────────────────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def export_markdown_report(
+    path: str,
+    recipe_result: dict[str, Any],
+    title: str = "SAF Analysis Report",
+) -> dict[str, Any]:
+    """Generate a complete Markdown report from a previous ``run_analysis_recipe``
+    result. Includes APA interpretations, result tables, SPSS syntax, and warnings.
+
+    Returns the Markdown text as a string for easy saving or inline viewing.
+    """
+    try:
+        report = generate_markdown_report(path, recipe_result, title=title)
+        return _success(path=path, title=title, markdown=report, format="markdown")
+    except Exception as exc:
         return _error(exc)
 
 
@@ -526,6 +682,10 @@ def list_tools() -> dict[str, Any]:
         {"name": "profile_spss_data", "description": "Profile variables in a .sav, .zsav, or .por file."},
         {"name": "convert_spss_to_csv", "description": "Convert a .sav, .zsav, or .por file to CSV."},
         {"name": "convert_csv_to_sav", "description": "Convert a CSV or TSV file to .sav."},
+        {"name": "inspect_dataset", "description": "SPSS-style data dictionary: variable labels, value labels, measure level, missing counts, types, and suggested research role."},
+        {"name": "run_analysis_recipe", "description": "Batch multiple analyses in one call with APA interpretations and SPSS syntax."},
+        {"name": "generate_spss_syntax_v2", "description": "Generate SPSS syntax for DESCRIPTIVES, FREQUENCIES, CROSSTABS, T-TEST, ONEWAY, CORRELATIONS, REGRESSION, or RELIABILITY."},
+        {"name": "export_markdown_report", "description": "Generate a Markdown report from a recipe result."},
         {"name": "generate_basic_spss_syntax", "description": "Generate basic SPSS syntax for a dataset."},
         {"name": "cross_tabulation", "description": "Cross-tabulation (contingency table) between two categorical variables."},
         {"name": "saf_stat_descriptive", "description": "Univariate summary (n, mean, sd, median, min, max, IQR, MAD, skew, kurtosis, 95% CI)."},
@@ -550,15 +710,28 @@ def list_tools() -> dict[str, Any]:
 @mcp.resource("saf://guide")
 def guide() -> str:
     return (
-        "SAF MCP -- Statistical Analysis Framework -- is a privacy-first MCP server "
-        "for SPSS-compatible datasets (.sav, .zsav, .por) plus CSV, TSV, and XLSX. "
-        "\n\n"
-        "Use it to: inspect metadata, preview rows, profile variables, convert file "
-        "formats, generate SPSS syntax, run frequencies & crosstabs, assess scale "
-        "reliability (Cronbach's alpha), and perform 12 statistical analysis routines "
-        "(descriptives, assumptions, group comparisons, ANOVA, correlation, regression, "
-        "chi-square, non-parametric, effect size, power, outliers, missing data).\n\n"
-        "SAF does not execute SPSS syntax nor access files outside SAF_DATA_ROOT."
+        "SAF MCP -- Statistical Analysis Forge -- is a privacy-first SPSS-compatible "
+        "MCP server for social science research.\n\n"
+        "Supported files: .sav, .zsav, .por, .csv, .tsv, .xlsx\n\n"
+        "28 tools in 6 groups:\n"
+        "  Dataset (7): list_data_files, inspect_spss_metadata, preview_spss_data,\n"
+        "    profile_spss_data, convert_spss_to_csv, convert_csv_to_sav,\n"
+        "    generate_basic_spss_syntax\n"
+        "  Data Intelligence (3): inspect_dataset (data dictionary),\n"
+        "    run_analysis_recipe (batch analyses), export_markdown_report\n"
+        "  SPSS Syntax v2: generate_spss_syntax_v2 (DESCRIPTIVES, FREQUENCIES,\n"
+        "    CROSSTABS, T-TEST, ONEWAY, CORRELATIONS, REGRESSION, RELIABILITY)\n"
+        "  Survey (4): cross_tabulation, saf_stat_frequencies,\n"
+        "    saf_stat_reliability, saf_stat_describe_all\n"
+        "  Stats (12): descriptives, assumptions, compare_groups, anova,\n"
+        "    correlate, regress, chi_square, nonparametric, effect_size, power,\n"
+        "    outliers, missing\n"
+        "  Utility: list_tools\n\n"
+        "Design: SAF is an auditable, SPSS-compatible AI statistical assistant.\n"
+        "Every result includes method, variables, n, warnings, p-values, effect\n"
+        "sizes, and APA-style interpretation when available.\n\n"
+        "Security: Sandboxed under SAF_DATA_ROOT. No uploads, no telemetry,\n"
+        "no shell execution from datasets."
     )
 
 
@@ -576,13 +749,17 @@ def analyze_dataset_prompt(path: str) -> str:
     return (
         "Analyze the dataset at this SAF sandbox path: "
         f"{path}\n\n"
-        "1. Inspect metadata (inspect_spss_metadata)\n"
-        "2. Preview a small number of rows (preview_spss_data)\n"
-        "3. Profile variables (profile_spss_data)\n"
-        "4. Run frequencies on categorical columns (saf_stat_frequencies)\n"
-        "5. Describe all numeric columns (saf_stat_describe_all)\n"
-        "6. Check missing data patterns (saf_stat_missing)\n\n"
-        "Summarize data quality, missingness, notable labels, "
+        "1. Generate a data dictionary (inspect_dataset) to understand all "
+        "variables, labels, measure levels, and suggested roles.\n"
+        "2. Preview a small number of rows (preview_spss_data).\n"
+        "3. Run an analysis recipe (run_analysis_recipe) with:\n"
+        "   - frequencies on all categorical columns\n"
+        "   - descriptives on all numeric columns\n"
+        "   - missing data check\n"
+        "   - outlier detection on key numeric variables\n"
+        "4. Export a Markdown report (export_markdown_report) summarizing "
+        "everything.\n\n"
+        "Summarize data quality, missingness, notable labels, variable roles, "
         "and recommend next analysis steps."
     )
 
@@ -592,20 +769,35 @@ def survey_analysis_prompt(path: str, scale_columns: list[str] | None = None) ->
     prompt = (
         "Analyze the survey dataset at this SAF sandbox path: "
         f"{path}\n\n"
-        "1. Inspect metadata and preview rows\n"
-        "2. Profile all variables\n"
-        "3. Run frequencies on all categorical/demographic columns\n"
+        "1. Generate a data dictionary (inspect_dataset) to understand "
+        "variable labels, value labels, and measure levels.\n"
+        "2. Preview a small number of rows.\n"
+        "3. Profile all variables.\n"
+        "4. Run frequencies on all categorical/demographic columns.\n"
     )
     if scale_columns:
         prompt += (
-            f"4. Assess scale reliability for: {', '.join(scale_columns)} "
+            f"5. Assess scale reliability for: {', '.join(scale_columns)} "
             "(saf_stat_reliability)\n"
         )
+        prompt += (
+            "6. Run an analysis recipe (run_analysis_recipe) with descriptives "
+            "on scale variables, correlations between key items, and "
+            "cross-tabulations.\n"
+        )
+        offset = 7
+    else:
+        prompt += (
+            "5. Run an analysis recipe (run_analysis_recipe) with:\n"
+            "   - descriptives on all numeric variables\n"
+            "   - frequency tables for key categorical variables\n"
+            "   - cross-tabulations between demographics and outcomes\n"
+        )
+        offset = 6
     prompt += (
-        "5. Run descriptives on numeric/scale variables\n"
-        "6. Check for outliers\n"
-        "7. Run cross-tabulations between key demographic and outcome variables\n"
-        "8. Report findings in a clear, structured format"
+        f"{offset}. Generate SPSS syntax (generate_spss_syntax_v2) for the main analyses.\n"
+        f"{offset+1}. Export a Markdown report (export_markdown_report) with interpretations.\n"
+        f"{offset+2}. Report findings in a clear, structured format."
     )
     return prompt
 

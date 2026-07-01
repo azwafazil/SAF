@@ -34,6 +34,20 @@ def metadata_to_dict(metadata: Any) -> dict[str, Any]:
         name: labels[index] for index, name in enumerate(names) if index < len(labels)
     }
 
+    missing_ranges = {}
+    try:
+        raw_ranges = getattr(metadata, "missing_ranges", {}) or {}
+        for var_name, range_list in raw_ranges.items():
+            parsed = []
+            for r in range_list:
+                if isinstance(r, tuple):
+                    parsed.append({"lo": float(r[0]), "hi": float(r[1])})
+                else:
+                    parsed.append({"value": float(r)})
+            missing_ranges[var_name] = parsed
+    except Exception:
+        pass
+
     return {
         "row_count": getattr(metadata, "number_rows", None),
         "column_count": getattr(metadata, "number_columns", len(names)),
@@ -46,6 +60,7 @@ def metadata_to_dict(metadata: Any) -> dict[str, Any]:
         "variable_format": getattr(metadata, "variable_format", {}) or {},
         "original_variable_types": getattr(metadata, "original_variable_types", {}) or {},
         "readstat_variable_types": getattr(metadata, "readstat_variable_types", {}) or {},
+        "missing_ranges": missing_ranges,
     }
 
 

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saf-mcp"
-version = "0.2.0"
-description = "An MCP server for SPSS-compatible datasets: SAV, ZSAV, POR, XLSX, CSV, metadata inspection, data preview, conversion, profiling, frequencies, crosstabs, reliability, and SPSS syntax generation."
+version = "0.3.0"
+description = "An SPSS-compatible MCP statistical assistant for social science research: data dictionary, metadata, frequencies, reliability, t-test, ANOVA, correlation, regression, chi-square, and more."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

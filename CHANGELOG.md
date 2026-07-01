@@ -3,6 +3,67 @@
 All notable changes to SAF (Statistical Analysis Forge) are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] — 2026-06-03 — Data Dictionary, Recipe Runner, APA Reports, SPSS Syntax v2
+
+### Added
+
+- **`inspect_dataset`** — SPSS-style Data Dictionary (Variable View). Returns
+  variable names, labels, value labels, measure level (nominal/ordinal/scale),
+  missing counts, data types, unique values, and suggested research role
+  (IV, DV, grouping, scale_item, identifier). Works for all supported formats.
+- **`run_analysis_recipe`** — batch multiple analyses (descriptives, frequencies,
+  reliability, correlation, regression, compare_groups, anova, chi_square,
+  missing, outliers, assumptions, describe_all) in a single MCP call. Each step
+  returns JSON results, APA 7 interpretation, and SPSS syntax.
+- **`export_markdown_report`** — generate a complete Markdown report from a
+  recipe result, including APA interpretations, result tables, SPSS syntax,
+  and data-quality warnings.
+- **`generate_spss_syntax_v2`** — SPSS syntax generator for DESCRIPTIVES,
+  FREQUENCIES, CROSSTABS, T-TEST (indep/paired/one-sample), ONEWAY (ANOVA),
+  CORRELATIONS, REGRESSION, and RELIABILITY.
+- **`config.py`** — centralized environment configuration (SAF_HOST, SAF_PORT,
+  SAF_DATA_ROOT, SAF_ALLOW_WRITE, SAF_AUDIT_LOG).
+- **`syntax.py`** — modular SPSS syntax generation module (280 lines).
+- **`recipes.py`** — analysis recipe runner (200 lines).
+- **`reporting.py`** — APA 7 interpretation engine + Markdown/CSV export (250 lines).
+- **`spss_utils.metadata_to_dict()`** now returns `missing_ranges` parsed from
+  SPSS file metadata.
+- **13 new tests** in `tests/test_metadata.py` covering data dictionary,
+  measure inference, role suggestion, missing counts, value labels, warnings.
+
+### Changed
+
+- SAF now exposes **28 tools** (was 24).
+- `saf://guide` resource updated to mention recipe runner and report export.
+- `analyze_dataset_prompt` and `survey_analysis_prompt` updated to recommend
+  recipe runner and report export.
+- `pyproject.toml` description expanded; version → 0.3.0.
+
+### Project file layout (new modules in bold)
+
+```
+saf_mcp/
+├── server.py          # 28 tools
+├── config.py          # NEW
+├── security.py
+├── spss_utils.py
+├── stats.py
+├── metadata.py        # NEW
+├── recipes.py         # NEW
+├── reporting.py       # NEW
+├── syntax.py          # NEW
+└── __init__.py
+```
+
+### Test surface (65 tests, 100% green)
+
+```
+test_imports.py:     2 tests
+test_metadata.py:   13 tests (new)
+test_stats.py:      29 tests
+test_stats_v2.py:   24 tests
+```
+
 ## [Unreleased] — 2026-06-03 — Improve-Stats-Tools
 
 ### Fixed
